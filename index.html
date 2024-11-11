@@ -18,7 +18,7 @@
             padding: 25px;
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            margin-bottom: 80px; /* Added to prevent overlap with footer */
+            margin-bottom: 80px; /* Prevent overlap with footer */
         }
         label {
             display: block;
@@ -191,25 +191,31 @@ function calculateCIDR() {
         }
     }
 
-    var cidrList = rangeToCIDR(startLong, endLong);
-    if (cidrList.length === 0) {
+    var cidr = calculateMinCIDR(startLong, endLong);
+    if (!cidr) {
         showError("Unable to calculate CIDR for the given range.");
         return;
     }
-    displayResult(cidrList);
+    displayResult(cidr);
 }
 
-function rangeToCIDR(start, end) {
-    var cidrs = [];
-    while (start <= end) {
-        var maxSize = 32 - Math.floor(Math.log2(start & -start));
-        var bits = Math.floor(Math.log2(end - start + 1));
-        var size = Math.min(maxSize, bits);
-        var mask = 32 - size;
-        cidrs.push(longToIp(start) + '/' + mask);
-        start += Math.pow(2, size);
+function calculateMinCIDR(start, end) {
+    var totalIPs = end - start + 1;
+    var cidrPrefix = 32 - Math.ceil(Math.log2(totalIPs));
+    // Adjust the start IP to the network address
+    var networkAddress = start & (~((1 << (32 - cidrPrefix)) - 1));
+    // Ensure the network address covers the entire range
+    if (networkAddress > start) {
+        cidrPrefix -= 1;
+        networkAddress = start & (~((1 << (32 - cidrPrefix)) - 1));
     }
-    return cidrs;
+    // Verify that the CIDR block includes the end IP
+    var broadcastAddress = networkAddress + Math.pow(2, 32 - cidrPrefix) - 1;
+    if (broadcastAddress < end) {
+        cidrPrefix -= 1;
+        networkAddress = start & (~((1 << (32 - cidrPrefix)) - 1));
+    }
+    return longToIp(networkAddress) + '/' + cidrPrefix;
 }
 
 function validateIP(ip) {
@@ -221,12 +227,8 @@ function showError(message) {
     document.getElementById("result").innerHTML = '<div class="error">' + message + '</div>';
 }
 
-function displayResult(cidrList) {
-    var resultHTML = "<h2>Result:</h2><ul>";
-    for (var i = 0; i < cidrList.length; i++) {
-        resultHTML += "<li>" + cidrList[i] + "</li>";
-    }
-    resultHTML += "</ul>";
+function displayResult(cidr) {
+    var resultHTML = "<h2>Result:</h2><p>" + cidr + "</p>";
     document.getElementById("result").innerHTML = resultHTML;
 }
 </script>
