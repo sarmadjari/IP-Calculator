@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CIDR Calculator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            text-align: center;
+        }
+        .container {
+            max-width: 500px;
+            margin: auto;
+            background: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 80px; /* Added to prevent overlap with footer */
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="number"], select {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            margin-top: 20px;
+            padding: 12px;
+            width: 100%;
+            font-size: 18px;
+            background-color: #0078D7;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #005a9e;
+        }
+        #result {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #e8f4fd;
+            border-left: 4px solid #0078D7;
+        }
+        .error {
+            color: #d8000c;
+            background-color: #ffbaba;
+            padding: 10px;
+            margin-top: 15px;
+            border-left: 4px solid #d8000c;
+        }
+        /* Footer Styles */
+        footer {
+            text-align: center;
+            padding: 15px;
+            background-color: #f1f1f1;
+            color: #555;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+        }
+        footer a {
+            color: #0078D7;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>CIDR Calculator</h1>
+    <label>Select Input Method:</label>
+    <select id="optionSelect" onchange="toggleInputFields()">
+        <option value="range">IP Range</option>
+        <option value="startCount">Start IP and Number of IPs</option>
+    </select>
+
+    <div id="rangeInputs">
+        <label>Start IP:</label>
+        <input type="text" id="startIPRange" placeholder="e.g., 192.168.1.0">
+        <label>End IP:</label>
+        <input type="text" id="endIPRange" placeholder="e.g., 192.168.1.255">
+    </div>
+
+    <div id="startCountInputs" style="display:none;">
+        <label>Start IP:</label>
+        <input type="text" id="startIPCount" placeholder="e.g., 192.168.1.0">
+        <label>Number of IPs:</label>
+        <input type="number" id="numberOfIPs" placeholder="e.g., 256">
+    </div>
+
+    <button onclick="calculateCIDR()">Calculate CIDR</button>
+
+    <div id="result"></div>
+</div>
+
+<!-- Footer Section -->
+<footer>
+    Created with ❤️ by <a href="#" target="_blank">Sarmad Jari</a>
+</footer>
+
+<script>
+function toggleInputFields() {
+    var option = document.getElementById("optionSelect").value;
+    document.getElementById("result").innerHTML = "";
+    if (option === "range") {
+        document.getElementById("rangeInputs").style.display = "block";
+        document.getElementById("startCountInputs").style.display = "none";
+    } else {
+        document.getElementById("rangeInputs").style.display = "none";
+        document.getElementById("startCountInputs").style.display = "block";
+    }
+}
+
+function ipToLong(ip) {
+    var parts = ip.split('.');
+    if (parts.length !== 4) return null;
+    var longIp = 0;
+    for (var i = 0; i < 4; i++) {
+        var octet = parseInt(parts[i]);
+        if (isNaN(octet) || octet < 0 || octet > 255) return null;
+        longIp += octet << ((3 - i) * 8);
+    }
+    return longIp >>> 0;
+}
+
+function longToIp(long) {
+    return [
+        (long >>> 24) & 255,
+        (long >>> 16) & 255,
+        (long >>> 8) & 255,
+        long & 255
+    ].join('.');
+}
+
+function calculateCIDR() {
+    var option = document.getElementById("optionSelect").value;
+    var startIP, endIP;
+
+    if (option === "range") {
+        startIP = document.getElementById("startIPRange").value.trim();
+        endIP = document.getElementById("endIPRange").value.trim();
+
+        if (!validateIP(startIP) || !validateIP(endIP)) {
+            showError("Please enter valid IP addresses.");
+            return;
+        }
+
+        var startLong = ipToLong(startIP);
+        var endLong = ipToLong(endIP);
+
+        if (startLong > endLong) {
+            showError("Start IP must be less than or equal to End IP.");
+            return;
+        }
+
+    } else {
+        startIP = document.getElementById("startIPCount").value.trim();
+        var numberOfIPs = parseInt(document.getElementById("numberOfIPs").value);
+
+        if (!validateIP(startIP)) {
+            showError("Please enter a valid start IP address.");
+            return;
+        }
+
+        if (isNaN(numberOfIPs) || numberOfIPs <= 0) {
+            showError("Please enter a positive number of IPs.");
+            return;
+        }
+
+        var startLong = ipToLong(startIP);
+        var endLong = startLong + numberOfIPs - 1;
+
+        if (endLong > 0xFFFFFFFF) {
+            showError("The range exceeds the maximum IP address.");
+            return;
+        }
+    }
+
+    var cidrList = rangeToCIDR(startLong, endLong);
+    if (cidrList.length === 0) {
+        showError("Unable to calculate CIDR for the given range.");
+        return;
+    }
+    displayResult(cidrList);
+}
+
+function rangeToCIDR(start, end) {
+    var cidrs = [];
+    while (start <= end) {
+        var maxSize = 32 - Math.floor(Math.log2(start & -start));
+        var bits = Math.floor(Math.log2(end - start + 1));
+        var size = Math.min(maxSize, bits);
+        var mask = 32 - size;
+        cidrs.push(longToIp(start) + '/' + mask);
+        start += Math.pow(2, size);
+    }
+    return cidrs;
+}
+
+function validateIP(ip) {
+    var regex = /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
+    return regex.test(ip);
+}
+
+function showError(message) {
+    document.getElementById("result").innerHTML = '<div class="error">' + message + '</div>';
+}
+
+function displayResult(cidrList) {
+    var resultHTML = "<h2>Result:</h2><ul>";
+    for (var i = 0; i < cidrList.length; i++) {
+        resultHTML += "<li>" + cidrList[i] + "</li>";
+    }
+    resultHTML += "</ul>";
+    document.getElementById("result").innerHTML = resultHTML;
+}
+</script>
+
+</body>
+</html>
